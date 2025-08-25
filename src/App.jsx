@@ -2,6 +2,7 @@ import React, { useState, useEffect} from 'react'
 import Search from './components/Search.jsx'
 import Spinner from './components/Spinner.jsx'
 import MovieCard from './components/MovieCard.jsx'
+import { getTrendingMovies, supabase,updateSearchCount  } from "./supabaseClient.js"
 import { useDebounce } from 'react-use'
 
 //API - Application Programming Interface - a set of rules that allows one piece of software to interact with another.
@@ -27,6 +28,19 @@ const App = () => {
   const[movieList, setMovieList] = useState([]); // State to hold the list of movies
   const[isLoading, setIsLoading] = useState(false); // State to indicate loading status
   const[debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  const[trendingMovies, setTrendingMovies] = useState([]); // State to hold trending movies
+
+  useEffect(() => {
+    const testConnection = async () => {
+      const { data, error } = await supabase.from("metrics").select("*")
+      if (error) {
+        console.error("❌ Supabase error:", error.message)
+      } else {
+        console.log("✅ Supabase connected! Data:", data, error)
+      }
+    }
+    testConnection()
+  }, [])
 
   // Debounces the search term to avoid too many API calls
   // by waiting for 500 milliseconds after the user stops typing
@@ -37,6 +51,8 @@ const App = () => {
   const fetchMovies = async (query = '') => {
     setIsLoading(true); // Set loading state to true before fetching data
     setErrorMessage(''); // Clear any previous error messages
+  
+  
 
     try{ 
       const endpoint = query    //encodeURIComponent to ensure special characters in the query are handled correctly
@@ -61,6 +77,10 @@ const App = () => {
       }
 
       setMovieList(data.results || []); // Set the movie list with the results from the API
+
+      if(query && data.results.length > 0){
+        await updateSearchCount(query, data.results[0]); // Update search count in Supabase for the first movie result
+      }
     }catch(error){
       console.error(`Error fetching movies: ${error}`);
       setErrorMessage('Failed to fetch movies. Please try again later.');
@@ -70,12 +90,26 @@ const App = () => {
     }
   }
 
+  const loadTrendingMovies = async () => {
+    try{
+      const movies = await getTrendingMovies();
+
+      setTrendingMovies(movies);
+    }catch(error){
+      console.error('Error fetching trending movies:', error);
+    }
+  }
+
   useEffect(() => {
     fetchMovies(debouncedSearchTerm);
   }, [debouncedSearchTerm]); 
   // if dependency array is empty, the effect runs only once when the component mounts.
   // if it contains variables, the effect runs whenever those variables change.
   // so whenever searchTerm changes, fetchMovies is called with the new searchTerm value.
+
+  useEffect(() => {
+    loadTrendingMovies();
+  },[]); //empty dependency array, so it only loads trening movies once when the component mounts
 
   return (
     <main>
@@ -87,8 +121,23 @@ const App = () => {
           <h1>Find <span className ="text-gradient">Movies</span> You'll Enjoy Without the Hassle </h1>
            <Search searchTerm={searchTerm} setSearchTerm={setSearchTerm} /> 
         </header>
-       <section className="all-movies">
-        <h2 className="mt-[40px]"> ALL Movies</h2>
+
+        {trendingMovies.length > 0 && (
+          <section className="trending">
+            <h2>Trending Movies</h2>
+            <ul>
+              {trendingMovies.map((movie,index) => (
+                <li key={movie.$id}>
+                  <p>{index+1}</p>
+                  <img src={movie.poster_url} alt={movie.title} />
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        <section className="all-movies">
+          <h2 className="mt-[20px]"> ALL Movies</h2>
 
         {isLoading ? (
           <Spinner />
